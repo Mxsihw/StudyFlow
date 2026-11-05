@@ -1,0 +1,17 @@
+# Virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Test databases
+studyflow_tests_*/
+
+# Environment variables
+.env
