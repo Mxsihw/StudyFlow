@@ -7,8 +7,19 @@ from models import (
     CalendarEvent,
     Tag
 )
-
-
+from validators import (
+    validate_date,
+    validate_datetime,
+    validate_datetime_order,
+    validate_non_negative_integer,
+    validate_optional_text,
+    validate_required_text,
+)
+from constants import (
+    DEFAULT_ASSIGNMENT_PRIORITY,
+    DEFAULT_ASSIGNMENT_STATUS,
+    DEFAULT_RESOURCE_STATUS,
+)
 _UNSET = object()
 
 
@@ -50,7 +61,24 @@ def create_course(
     color=None
 ):
     """Create a new course and return its ID."""
-
+    name = validate_required_text(name, "Course name")
+    instructor = validate_optional_text(
+        instructor,
+        "Instructor",
+)
+    credits = validate_non_negative_integer(
+        credits,
+        "Credits",
+        allow_none=True,
+)
+    semester = validate_optional_text(
+        semester,
+        "Semester",
+)
+    color = validate_optional_text(
+        color,
+        "Color",
+)
     connection = get_connection()
 
     try:
@@ -173,7 +201,33 @@ def update_course(
     is_active=_UNSET
 ):
     """Update only explicitly supplied fields of an existing course."""
+    if name is not _UNSET:
+        name = validate_required_text(name, "Course name")
 
+    if instructor is not _UNSET:
+        instructor = validate_optional_text(
+            instructor,
+            "Instructor",
+    )
+
+    if credits is not _UNSET:
+        credits = validate_non_negative_integer(
+            credits,
+            "Credits",
+            allow_none=True,
+    )
+
+    if semester is not _UNSET:
+        semester = validate_optional_text(
+            semester,
+            "Semester",
+    )
+
+    if color is not _UNSET:
+        color = validate_optional_text(
+            color,
+            "Color",
+    )
     connection = get_connection()
 
     try:
@@ -233,12 +287,22 @@ def create_assignment(
     title,
     description=None,
     deadline=None,
-    status="Not Started",
-    priority="Medium",
+    status=DEFAULT_ASSIGNMENT_STATUS,
+    priority=DEFAULT_ASSIGNMENT_PRIORITY,
     progress=0,
 ):
     """Create a new assignment and return its ID."""
+    title = validate_required_text(title, "Assignment title")
 
+    description = validate_optional_text(
+        description,
+        "Description",
+)
+    deadline = validate_date(
+        deadline,
+        "Deadline",
+        allow_none=True,
+    )
     connection = get_connection()
 
     try:
@@ -394,7 +458,23 @@ def update_assignment(
     progress=_UNSET,
 ):
     """Update only explicitly supplied fields of an existing assignment."""
+    if title is not _UNSET:
+        title = validate_required_text(
+            title,
+            "Assignment title",
+    )
 
+    if description is not _UNSET:
+        description = validate_optional_text(
+            description,
+            "Description",
+    )
+    if deadline is not _UNSET:
+        deadline = validate_date(
+            deadline,
+            "Deadline",
+            allow_none=True,
+        )
     connection = get_connection()
 
     try:
@@ -453,11 +533,21 @@ def create_resource(
     author=None,
     category=None,
     url=None,
-    status="Not Started",
+    status=DEFAULT_RESOURCE_STATUS,
     notes=None,
 ):
     """Create a new resource and return its ID."""
+    title = validate_required_text(title, "Resource title")
 
+    url = validate_optional_text(
+        url,
+        "URL",
+)
+
+    notes = validate_optional_text(
+        notes,
+        "Notes",
+)
     connection = get_connection()
 
     try:
@@ -623,7 +713,23 @@ def update_resource(
     notes=_UNSET,
 ):
     """Update only explicitly supplied fields of an existing resource."""
+    if title is not _UNSET:
+        title = validate_required_text(
+            title,
+            "Resource title",
+    )
 
+    if url is not _UNSET:
+        url = validate_optional_text(
+            url,
+            "URL",
+    )
+
+    if notes is not _UNSET:
+        notes = validate_optional_text(
+            notes,
+            "Notes",
+    )
     connection = get_connection()
 
     try:
@@ -682,7 +788,10 @@ def create_study_session(
     notes=None,
 ):
     """Create a new study session and return its ID."""
-
+    study_date = validate_date(
+        study_date,
+        "Study date",
+)
     connection = get_connection()
 
     try:
@@ -823,7 +932,10 @@ def update_study_session(
     notes=None,
 ):
     """Update an existing study session."""
-
+    study_date = validate_date(
+        study_date,
+        "Study date",
+)
     connection = get_connection()
 
     try:
@@ -890,7 +1002,29 @@ def create_calendar_event(
     description=None,
 ):
     """Create a new calendar event and return its ID."""
+    title = validate_required_text(
+        title,
+        "Calendar event title",
+)
 
+    description = validate_optional_text(
+        description,
+        "Description",
+)
+    start_datetime = validate_datetime(
+        start_datetime,
+        "Start datetime",
+)
+
+    end_datetime = validate_datetime(
+        end_datetime,
+        "End datetime",
+        allow_none=True,
+)
+    validate_datetime_order(
+        start_datetime,
+        end_datetime,
+)
     connection = get_connection()
 
     try:
@@ -1043,7 +1177,29 @@ def update_calendar_event(
     description=_UNSET,
 ):
     """Update only explicitly supplied fields of an existing calendar event."""
+    if title is not _UNSET:
+        title = validate_required_text(
+            title,
+            "Calendar event title",
+    )
 
+    if description is not _UNSET:
+        description = validate_optional_text(
+            description,
+            "Description",
+    )
+    if start_datetime is not _UNSET:
+        start_datetime = validate_datetime(
+            start_datetime,
+            "Start datetime",
+    )
+
+    if end_datetime is not _UNSET:
+        end_datetime = validate_datetime(
+            end_datetime,
+            "End datetime",
+            allow_none=True,
+    )
     connection = get_connection()
 
     try:
@@ -1095,7 +1251,10 @@ def delete_calendar_event(event_id):
 
 def create_tag(name):
     """Create a new tag and return its ID."""
-
+    name = validate_required_text(
+        name,
+        "Tag name",
+)
     connection = get_connection()
 
     try:
@@ -1179,7 +1338,11 @@ def get_tag_by_id(tag_id):
 
 def update_tag(tag_id, name):
     """Update a tag."""
-
+    if name is not _UNSET:
+        name = validate_required_text(
+            name,
+            "Tag name",
+    )
     connection = get_connection()
 
     try:
