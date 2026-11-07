@@ -105,6 +105,19 @@ class TestDatabaseIsolation(unittest.TestCase):
             database.DEFAULT_DATABASE_PATH,
         )
 
+    def test_foreign_keys_are_enabled(self):
+        connection = database.get_connection()
+
+        try:
+            enabled = connection.execute(
+                "PRAGMA foreign_keys"
+            ).fetchone()[0]
+
+        finally:
+            connection.close()
+
+        self.assertEqual(enabled, 1)
+
 
 class TestCourseServices(unittest.TestCase):
 
@@ -114,6 +127,23 @@ class TestCourseServices(unittest.TestCase):
 
     def setUp(self):
         reset_database()
+
+    def create_related_records(self, course_id):
+        return (
+            create_assignment(course_id, "Linked Assignment"),
+            create_study_session(course_id, "2026-11-04", 60),
+            create_resource(
+                "Linked Resource",
+                "Book",
+                course_id=course_id,
+            ),
+            create_calendar_event(
+                "Linked Event",
+                "Exam",
+                "2026-12-20 09:00",
+                course_id=course_id,
+            ),
+        )
 
     def test_create_course(self):
         course_id = create_course(
@@ -247,6 +277,128 @@ class TestCourseServices(unittest.TestCase):
         deleted = delete_course(999999)
 
         self.assertFalse(deleted)
+
+    def test_archive_course_preserves_related_records(self):
+        course_id = create_course("Archived Course")
+
+        (
+            assignment_id,
+            session_id,
+            resource_id,
+            event_id,
+        ) = self.create_related_records(course_id)
+
+        self.assertTrue(set_course_active(course_id, False))
+
+        self.assertEqual(
+            get_assignment_by_id(assignment_id).course_id,
+            course_id,
+        )
+        self.assertEqual(
+            get_study_session_by_id(session_id).course_id,
+            course_id,
+        )
+        self.assertEqual(
+            get_resource_by_id(resource_id).course_id,
+            course_id,
+        )
+        self.assertEqual(
+            get_calendar_event_by_id(event_id).course_id,
+            course_id,
+        )
+
+    def test_delete_course_cascades_assignments_and_study_sessions(self):
+        course_id = create_course("Course To Delete")
+
+        (
+            assignment_id,
+            session_id,
+            _,
+            _,
+        ) = self.create_related_records(course_id)
+
+        self.assertTrue(delete_course(course_id))
+
+        self.assertIsNone(get_assignment_by_id(assignment_id))
+        self.assertIsNone(get_study_session_by_id(session_id))
+
+    def test_delete_course_detaches_resources_and_calendar_events(self):
+        course_id = create_course("Course To Delete")
+
+        (
+            _,
+            _,
+            resource_id,
+            event_id,
+        ) = self.create_related_records(course_id)
+
+        self.assertTrue(delete_course(course_id))
+
+        resource = get_resource_by_id(resource_id)
+        event = get_calendar_event_by_id(event_id)
+
+        self.assertIsNotNone(resource)
+        self.assertIsNotNone(event)
+        self.assertIsNone(resource.course_id)
+        self.assertIsNone(event.course_id)
+
+    def test_delete_course_leaves_no_orphaned_related_records(self):
+        course_id = create_course("Course To Delete")
+
+        self.create_related_records(course_id)
+
+        self.assertTrue(delete_course(course_id))
+
+        connection = database.get_connection()
+
+        try:
+            counts = {
+                "assignments": connection.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM assignments
+                    WHERE course_id = ?
+                    """,
+                    (course_id,),
+                ).fetchone()[0],
+                "study_sessions": connection.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM study_sessions
+                    WHERE course_id = ?
+                    """,
+                    (course_id,),
+                ).fetchone()[0],
+                "resources": connection.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM resources
+                    WHERE course_id = ?
+                    """,
+                    (course_id,),
+                ).fetchone()[0],
+                "calendar_events": connection.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM calendar_events
+                    WHERE course_id = ?
+                    """,
+                    (course_id,),
+                ).fetchone()[0],
+            }
+
+        finally:
+            connection.close()
+
+        self.assertEqual(
+            counts,
+            {
+                "assignments": 0,
+                "study_sessions": 0,
+                "resources": 0,
+                "calendar_events": 0,
+            },
+        )
 
     def test_active_only_courses(self):
         active_id = create_course(
@@ -1427,6 +1579,68 @@ class TestResourceTagServices(unittest.TestCase):
                 resource_id,
                 999999,
             )
+
+    def test_deleting_resource_removes_tag_relationships(self):
+        resource_id = create_resource(
+            "Test Resource",
+            "Book",
+        )
+
+        tag_id = create_tag("Test")
+
+        add_tag_to_resource(resource_id, tag_id)
+
+        self.assertTrue(delete_resource(resource_id))
+
+        self.assertEqual(get_tags_for_resource(resource_id), [])
+
+        connection = database.get_connection()
+
+        try:
+            count = connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM resource_tags
+                WHERE resource_id = ?
+                """,
+                (resource_id,),
+            ).fetchone()[0]
+
+        finally:
+            connection.close()
+
+        self.assertEqual(count, 0)
+
+    def test_deleting_tag_removes_resource_relationships(self):
+        resource_id = create_resource(
+            "Test Resource",
+            "Book",
+        )
+
+        tag_id = create_tag("Test")
+
+        add_tag_to_resource(resource_id, tag_id)
+
+        self.assertTrue(delete_tag(tag_id))
+
+        self.assertEqual(get_tags_for_resource(resource_id), [])
+
+        connection = database.get_connection()
+
+        try:
+            count = connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM resource_tags
+                WHERE tag_id = ?
+                """,
+                (tag_id,),
+            ).fetchone()[0]
+
+        finally:
+            connection.close()
+
+        self.assertEqual(count, 0)
 
 if __name__ == "__main__":
     unittest.main()

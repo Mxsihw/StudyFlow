@@ -250,13 +250,22 @@ def update_course(
 
 
 def set_course_active(course_id, is_active):
-    """Set a course's active state without changing any other field."""
+    """Archive or restore a course without removing related data.
+
+    Setting ``is_active`` to False archives the course. Assignments,
+    study sessions, resources, and calendar events stay linked to it.
+    """
 
     return update_course(course_id, is_active=is_active)
 
 
 def delete_course(course_id):
-    """Delete a course by its ID."""
+    """Delete a course and apply its related-data semantics.
+
+    Assignments and study sessions are deleted together with the course.
+    Resources and calendar events are kept but detached from it, matching
+    the foreign-key actions defined in the database schema.
+    """
 
     connection = get_connection()
 
