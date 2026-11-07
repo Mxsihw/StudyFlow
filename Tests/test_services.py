@@ -308,6 +308,39 @@ class TestAssignmentServices(unittest.TestCase):
 
         self.assertEqual(len(assignments), 2)
 
+    def test_assignments_are_sorted_by_deadline_with_none_last(self):
+        course_id = self.create_test_course()
+
+        create_assignment(
+            course_id,
+            "No Deadline",
+        )
+
+        create_assignment(
+            course_id,
+            "Later",
+            deadline="2026-12-20",
+        )
+
+        create_assignment(
+            course_id,
+            "Sooner",
+            deadline="2026-11-10",
+        )
+
+        assignments = get_all_assignments()
+
+        titles = [assignment.title for assignment in assignments]
+
+        self.assertEqual(
+            titles,
+            [
+                "Sooner",
+                "Later",
+                "No Deadline",
+            ],
+        )
+
     def test_get_assignment_by_id(self):
         course_id = self.create_test_course()
 
@@ -344,6 +377,39 @@ class TestAssignmentServices(unittest.TestCase):
 
         for assignment in assignments:
             self.assertEqual(assignment.course_id, course_1)
+
+    def test_course_assignments_are_sorted_by_deadline_with_none_last(self):
+        course_id = self.create_test_course()
+
+        create_assignment(
+            course_id,
+            "No Deadline",
+        )
+
+        create_assignment(
+            course_id,
+            "Later",
+            deadline="2026-12-20",
+        )
+
+        create_assignment(
+            course_id,
+            "Sooner",
+            deadline="2026-11-10",
+        )
+
+        assignments = get_assignments_by_course(course_id)
+
+        titles = [assignment.title for assignment in assignments]
+
+        self.assertEqual(
+            titles,
+            [
+                "Sooner",
+                "Later",
+                "No Deadline",
+            ],
+        )
 
     def test_update_assignment(self):
         course_id = self.create_test_course()

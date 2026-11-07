@@ -349,7 +349,7 @@ def get_all_assignments():
         cursor.execute("""
             SELECT *
             FROM assignments
-            ORDER BY deadline
+            ORDER BY deadline IS NULL, deadline ASC
         """)
 
         rows = cursor.fetchall()
@@ -385,7 +385,7 @@ def get_assignments_by_course(course_id):
             SELECT *
             FROM assignments
             WHERE course_id = ?
-            ORDER BY deadline
+            ORDER BY deadline IS NULL, deadline ASC
             """,
             (course_id,),
         )
