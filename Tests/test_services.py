@@ -52,6 +52,7 @@ from services import (
     remove_tag_from_resource,
     get_tags_for_resource,
 )
+from validators import ValidationError
 
 _TEST_DB_DIR = None
 
@@ -1167,6 +1168,28 @@ class TestTagServices(unittest.TestCase):
 
         self.assertIsNotNone(tag_id)
 
+    def test_create_tag_trims_surrounding_whitespace(self):
+        tag_id = create_tag("  Python  ")
+
+        tag = get_tag_by_id(tag_id)
+
+        self.assertEqual(tag.name, "Python")
+
+    def test_create_tag_rejects_whitespace_only_name(self):
+        with self.assertRaises(ValidationError):
+            create_tag("   ")
+
+    def test_update_tag_trims_surrounding_whitespace(self):
+        tag_id = create_tag("Old Tag")
+
+        updated = update_tag(tag_id, "  Updated Tag  ")
+
+        self.assertTrue(updated)
+
+        tag = get_tag_by_id(tag_id)
+
+        self.assertEqual(tag.name, "Updated Tag")
+
     def test_get_all_tags(self):
         create_tag("Python")
         create_tag("Database")
@@ -1236,6 +1259,17 @@ class TestTagServices(unittest.TestCase):
 
         with self.assertRaises(sqlite3.IntegrityError):
             create_tag("Python")
+
+    def test_duplicate_tag_with_whitespace_is_rejected(self):
+        create_tag("Python")
+
+        with self.assertRaises(sqlite3.IntegrityError):
+            create_tag("  Python  ")
+
+        tags = get_all_tags()
+
+        self.assertEqual(len(tags), 1)
+        self.assertEqual(tags[0].name, "Python")
 
 
 class TestResourceTagServices(unittest.TestCase):
@@ -1317,7 +1351,7 @@ class TestResourceTagServices(unittest.TestCase):
 
         self.assertFalse(removed)
 
-    def test_duplicate_resource_tag_is_rejected(self):
+    def test_duplicate_resource_tag_is_idempotent(self):
         resource_id = create_resource(
             "Test Resource",
             "Book",
@@ -1326,9 +1360,52 @@ class TestResourceTagServices(unittest.TestCase):
         tag_id = create_tag("Test")
 
         add_tag_to_resource(resource_id, tag_id)
+        add_tag_to_resource(resource_id, tag_id)
 
-        with self.assertRaises(sqlite3.IntegrityError):
-            add_tag_to_resource(resource_id, tag_id)
+        tags = get_tags_for_resource(resource_id)
+
+        self.assertEqual(len(tags), 1)
+
+    def test_duplicate_assignment_creates_single_relationship(self):
+        resource_id = create_resource(
+            "Test Resource",
+            "Book",
+        )
+
+        tag_id = create_tag("Test")
+
+        add_tag_to_resource(resource_id, tag_id)
+        add_tag_to_resource(resource_id, tag_id)
+
+        connection = database.get_connection()
+
+        try:
+            row = connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM resource_tags
+                WHERE resource_id = ?
+                AND tag_id = ?
+                """,
+                (resource_id, tag_id),
+            ).fetchone()
+
+        finally:
+            connection.close()
+
+        self.assertEqual(row[0], 1)
+
+    def test_same_tag_can_be_assigned_to_different_resources(self):
+        tag_id = create_tag("Python")
+
+        resource_1 = create_resource("Python Book", "Book")
+        resource_2 = create_resource("Python Guide", "Article")
+
+        add_tag_to_resource(resource_1, tag_id)
+        add_tag_to_resource(resource_2, tag_id)
+
+        self.assertEqual(len(get_tags_for_resource(resource_1)), 1)
+        self.assertEqual(len(get_tags_for_resource(resource_2)), 1)
 
     def test_resource_must_exist_for_tag(self):
         tag_id = create_tag("Test")

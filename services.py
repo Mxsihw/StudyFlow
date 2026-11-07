@@ -14,6 +14,7 @@ from validators import (
     validate_non_negative_integer,
     validate_optional_text,
     validate_required_text,
+    validate_tag_name,
 )
 from constants import (
     DEFAULT_ASSIGNMENT_PRIORITY,
@@ -1251,10 +1252,7 @@ def delete_calendar_event(event_id):
 
 def create_tag(name):
     """Create a new tag and return its ID."""
-    name = validate_required_text(
-        name,
-        "Tag name",
-)
+    name = validate_tag_name(name)
     connection = get_connection()
 
     try:
@@ -1339,10 +1337,7 @@ def get_tag_by_id(tag_id):
 def update_tag(tag_id, name):
     """Update a tag."""
     if name is not _UNSET:
-        name = validate_required_text(
-            name,
-            "Tag name",
-    )
+        name = validate_tag_name(name)
     connection = get_connection()
 
     try:
@@ -1406,6 +1401,7 @@ def add_tag_to_resource(resource_id, tag_id):
                 tag_id
             )
             VALUES (?, ?)
+            ON CONFLICT (resource_id, tag_id) DO NOTHING
             """,
             (resource_id, tag_id),
         )

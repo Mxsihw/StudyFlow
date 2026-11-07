@@ -7,6 +7,7 @@ from validators import (
     validate_non_negative_integer,
     validate_optional_text,
     validate_required_text,
+    validate_tag_name,
 )
 class TestRequiredTextValidation(unittest.TestCase):
 
@@ -29,6 +30,26 @@ class TestRequiredTextValidation(unittest.TestCase):
     def test_required_text_rejects_non_string(self):
         with self.assertRaises(ValidationError):
             validate_required_text(123, "Name")
+
+
+class TestTagNameValidation(unittest.TestCase):
+
+    def test_tag_name_is_trimmed(self):
+        result = validate_tag_name("  Python  ")
+
+        self.assertEqual(result, "Python")
+
+    def test_tag_name_rejects_empty_string(self):
+        with self.assertRaises(ValidationError):
+            validate_tag_name("")
+
+    def test_tag_name_rejects_whitespace_only(self):
+        with self.assertRaises(ValidationError):
+            validate_tag_name("   ")
+
+    def test_tag_name_rejects_non_string(self):
+        with self.assertRaises(ValidationError):
+            validate_tag_name(123)
 
 
 class TestOptionalTextValidation(unittest.TestCase):

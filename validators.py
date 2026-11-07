@@ -22,6 +22,11 @@ def validate_required_text(value, field_name):
     return normalized_value
 
 
+def validate_tag_name(value):
+    """Validate and normalize a tag name."""
+    return validate_required_text(value, "Tag name")
+
+
 def validate_optional_text(value, field_name):
     """
     Validate optional text input and return the normalized value.
