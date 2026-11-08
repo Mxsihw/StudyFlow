@@ -1213,6 +1213,33 @@ def update_calendar_event(
     connection = get_connection()
 
     try:
+        if start_datetime is not _UNSET or end_datetime is not _UNSET:
+            row = connection.execute(
+                """
+                SELECT start_datetime, end_datetime
+                FROM calendar_events
+                WHERE id = ?
+                """,
+                (event_id,),
+            ).fetchone()
+
+            if row is not None:
+                effective_start = (
+                    row["start_datetime"]
+                    if start_datetime is _UNSET
+                    else start_datetime
+                )
+                effective_end = (
+                    row["end_datetime"]
+                    if end_datetime is _UNSET
+                    else end_datetime
+                )
+
+                validate_datetime_order(
+                    effective_start,
+                    effective_end,
+                )
+
         values = {
             "course_id": course_id,
             "title": title,
@@ -1416,6 +1443,8 @@ def add_tag_to_resource(resource_id, tag_id):
         )
 
         connection.commit()
+
+        return cursor.rowcount > 0
 
     finally:
         connection.close()
