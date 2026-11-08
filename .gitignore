@@ -4,6 +4,9 @@
 # Python cache
 __pycache__/
 *.py[cod]
+.idea/
+user_settings.json
+*.pyc
 
 # SQLite databases
 *.db
@@ -15,3 +18,4 @@ studyflow_tests_*/
 
 # Environment variables
 .env
+
