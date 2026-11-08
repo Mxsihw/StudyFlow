@@ -1,9 +1,7 @@
-import shutil
-import tempfile
 import unittest
-from pathlib import Path
 
 import database
+from Tests.db_test_utils import create_test_schema, drop_test_schema
 from services import (
     create_course,
     get_course_by_id,
@@ -28,27 +26,31 @@ _REQUIRED_TABLES = {
     "calendar_events",
     "tags",
     "resource_tags",
+    "users",
+    "user_preferences",
 }
 
-_TEST_DB_DIR = None
-_ORIGINAL_DB_PATH = None
-_FRESH_DB_EXISTED_BEFORE_INIT = None
+_TEST_DB_SCHEMA = None
+_ORIGINAL_DB_URL = None
 
 
 def _clear_database():
     connection = database.get_connection()
 
     try:
-        for table in (
-            "resource_tags",
-            "resources",
-            "assignments",
-            "study_sessions",
-            "calendar_events",
-            "tags",
-            "courses",
-        ):
-            connection.execute(f"DELETE FROM {table}")
+        connection.execute("""
+            TRUNCATE TABLE
+                resource_tags,
+                resources,
+                assignments,
+                study_sessions,
+                calendar_events,
+                tags,
+                courses,
+                user_preferences,
+                users
+            RESTART IDENTITY CASCADE
+        """)
 
         connection.commit()
 
@@ -57,34 +59,28 @@ def _clear_database():
 
 
 def setUpModule():
-    global _TEST_DB_DIR
-    global _ORIGINAL_DB_PATH
-    global _FRESH_DB_EXISTED_BEFORE_INIT
+    global _TEST_DB_SCHEMA
+    global _ORIGINAL_DB_URL
 
-    _ORIGINAL_DB_PATH = database.get_database_path()
-    _TEST_DB_DIR = tempfile.mkdtemp(prefix="studyflow_fresh_tests_")
-    fresh_db_path = Path(_TEST_DB_DIR) / "studyflow_fresh_test.db"
+    _ORIGINAL_DB_URL = database.get_database_url()
+    test_url, _TEST_DB_SCHEMA = create_test_schema()
 
-    _FRESH_DB_EXISTED_BEFORE_INIT = fresh_db_path.exists()
-
-    database.configure_database(fresh_db_path)
+    database.configure_database(test_url)
     database.initialize_database()
 
 
 def tearDownModule():
-    global _TEST_DB_DIR
-    global _ORIGINAL_DB_PATH
-    global _FRESH_DB_EXISTED_BEFORE_INIT
+    global _TEST_DB_SCHEMA
+    global _ORIGINAL_DB_URL
 
-    if _ORIGINAL_DB_PATH is not None:
-        database.configure_database(_ORIGINAL_DB_PATH)
+    if _ORIGINAL_DB_URL is not None:
+        database.configure_database(_ORIGINAL_DB_URL)
 
-    if _TEST_DB_DIR is not None:
-        shutil.rmtree(_TEST_DB_DIR, ignore_errors=True)
+    if _TEST_DB_SCHEMA is not None:
+        drop_test_schema(_TEST_DB_SCHEMA)
 
-    _TEST_DB_DIR = None
-    _ORIGINAL_DB_PATH = None
-    _FRESH_DB_EXISTED_BEFORE_INIT = None
+    _TEST_DB_SCHEMA = None
+    _ORIGINAL_DB_URL = None
 
 
 class TestFreshDatabase(unittest.TestCase):
@@ -92,17 +88,23 @@ class TestFreshDatabase(unittest.TestCase):
     def setUp(self):
         _clear_database()
 
-    def test_database_path_points_to_fresh_temporary_file(self):
-        self.assertFalse(_FRESH_DB_EXISTED_BEFORE_INIT)
-        self.assertIsNotNone(_TEST_DB_DIR)
+    def test_tests_use_isolated_schema(self):
+        self.assertIsNotNone(_TEST_DB_SCHEMA)
 
-        database_path = Path(database.get_database_path())
+        connection = database.get_connection()
 
-        self.assertEqual(database_path.parent, Path(_TEST_DB_DIR))
-        self.assertTrue(database_path.exists())
+        try:
+            row = connection.execute(
+                "SELECT current_schema() AS schema"
+            ).fetchone()
+
+        finally:
+            connection.close()
+
+        self.assertEqual(row["schema"], _TEST_DB_SCHEMA)
         self.assertNotEqual(
-            database_path,
-            database.DEFAULT_DATABASE_PATH,
+            database.get_database_url(),
+            database.DEFAULT_DATABASE_URL,
         )
 
     def test_required_tables_are_created(self):
@@ -111,17 +113,16 @@ class TestFreshDatabase(unittest.TestCase):
         try:
             rows = connection.execute(
                 """
-                SELECT name
-                FROM sqlite_master
-                WHERE type = 'table'
-                AND name NOT LIKE 'sqlite_%'
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = current_schema()
                 """
             ).fetchall()
 
         finally:
             connection.close()
 
-        table_names = {row["name"] for row in rows}
+        table_names = {row["table_name"] for row in rows}
 
         self.assertEqual(table_names, _REQUIRED_TABLES)
 
@@ -131,8 +132,8 @@ class TestFreshDatabase(unittest.TestCase):
         try:
             for table in sorted(_REQUIRED_TABLES):
                 count = connection.execute(
-                    f"SELECT COUNT(*) FROM {table}"
-                ).fetchone()[0]
+                    f"SELECT COUNT(*) AS count FROM {table}"
+                ).fetchone()["count"]
 
                 self.assertEqual(count, 0, table)
 

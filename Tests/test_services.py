@@ -1,11 +1,10 @@
-import shutil
-import sqlite3
-import tempfile
 import unittest
-from pathlib import Path
+
+from psycopg import IntegrityError
 
 import database
 from database import initialize_database
+from Tests.db_test_utils import create_test_schema, drop_test_schema
 from services import (
     create_course,
     get_all_courses,
@@ -54,23 +53,33 @@ from services import (
 )
 from validators import ValidationError
 
-_TEST_DB_DIR = None
+_TEST_DB_SCHEMA = None
+_ORIGINAL_DB_URL = None
 
 
 def setUpModule():
-    global _TEST_DB_DIR
+    global _TEST_DB_SCHEMA
+    global _ORIGINAL_DB_URL
 
-    _TEST_DB_DIR = tempfile.mkdtemp(prefix="studyflow_tests_")
-    database.configure_database(Path(_TEST_DB_DIR) / "studyflow_test.db")
+    _ORIGINAL_DB_URL = database.get_database_url()
+    test_url, _TEST_DB_SCHEMA = create_test_schema()
+
+    database.configure_database(test_url)
     initialize_database()
 
 
 def tearDownModule():
-    global _TEST_DB_DIR
+    global _TEST_DB_SCHEMA
+    global _ORIGINAL_DB_URL
 
-    if _TEST_DB_DIR is not None:
-        shutil.rmtree(_TEST_DB_DIR, ignore_errors=True)
-        _TEST_DB_DIR = None
+    if _ORIGINAL_DB_URL is not None:
+        database.configure_database(_ORIGINAL_DB_URL)
+
+    if _TEST_DB_SCHEMA is not None:
+        drop_test_schema(_TEST_DB_SCHEMA)
+
+    _TEST_DB_SCHEMA = None
+    _ORIGINAL_DB_URL = None
 
 
 def reset_database():
@@ -79,13 +88,19 @@ def reset_database():
     connection = database.get_connection()
 
     try:
-        connection.execute("DELETE FROM resource_tags")
-        connection.execute("DELETE FROM resources")
-        connection.execute("DELETE FROM assignments")
-        connection.execute("DELETE FROM study_sessions")
-        connection.execute("DELETE FROM calendar_events")
-        connection.execute("DELETE FROM tags")
-        connection.execute("DELETE FROM courses")
+        connection.execute("""
+            TRUNCATE TABLE
+                resource_tags,
+                resources,
+                assignments,
+                study_sessions,
+                calendar_events,
+                tags,
+                courses,
+                user_preferences,
+                users
+            RESTART IDENTITY CASCADE
+        """)
         connection.commit()
 
     finally:
@@ -94,29 +109,31 @@ def reset_database():
 
 class TestDatabaseIsolation(unittest.TestCase):
 
-    def test_tests_use_temporary_database(self):
-        self.assertIsNotNone(_TEST_DB_DIR)
-        self.assertEqual(
-            Path(database.get_database_path()).parent,
-            Path(_TEST_DB_DIR),
-        )
-        self.assertNotEqual(
-            database.get_database_path(),
-            database.DEFAULT_DATABASE_PATH,
-        )
+    def test_tests_use_isolated_schema(self):
+        self.assertIsNotNone(_TEST_DB_SCHEMA)
 
-    def test_foreign_keys_are_enabled(self):
         connection = database.get_connection()
 
         try:
-            enabled = connection.execute(
-                "PRAGMA foreign_keys"
-            ).fetchone()[0]
+            row = connection.execute(
+                "SELECT current_schema() AS schema"
+            ).fetchone()
 
         finally:
             connection.close()
 
-        self.assertEqual(enabled, 1)
+        self.assertEqual(row["schema"], _TEST_DB_SCHEMA)
+        self.assertNotEqual(
+            database.get_database_url(),
+            database.DEFAULT_DATABASE_URL,
+        )
+
+    def test_foreign_keys_are_enforced(self):
+        with self.assertRaises(IntegrityError):
+            create_assignment(
+                course_id=999999,
+                title="Invalid Assignment",
+            )
 
 
 class TestCourseServices(unittest.TestCase):
@@ -355,36 +372,36 @@ class TestCourseServices(unittest.TestCase):
             counts = {
                 "assignments": connection.execute(
                     """
-                    SELECT COUNT(*)
+                    SELECT COUNT(*) AS count
                     FROM assignments
-                    WHERE course_id = ?
+                    WHERE course_id = %s
                     """,
                     (course_id,),
-                ).fetchone()[0],
+                ).fetchone()["count"],
                 "study_sessions": connection.execute(
                     """
-                    SELECT COUNT(*)
+                    SELECT COUNT(*) AS count
                     FROM study_sessions
-                    WHERE course_id = ?
+                    WHERE course_id = %s
                     """,
                     (course_id,),
-                ).fetchone()[0],
+                ).fetchone()["count"],
                 "resources": connection.execute(
                     """
-                    SELECT COUNT(*)
+                    SELECT COUNT(*) AS count
                     FROM resources
-                    WHERE course_id = ?
+                    WHERE course_id = %s
                     """,
                     (course_id,),
-                ).fetchone()[0],
+                ).fetchone()["count"],
                 "calendar_events": connection.execute(
                     """
-                    SELECT COUNT(*)
+                    SELECT COUNT(*) AS count
                     FROM calendar_events
-                    WHERE course_id = ?
+                    WHERE course_id = %s
                     """,
                     (course_id,),
-                ).fetchone()[0],
+                ).fetchone()["count"],
             }
 
         finally:
@@ -665,7 +682,7 @@ class TestAssignmentServices(unittest.TestCase):
         self.assertFalse(deleted)
 
     def test_assignment_course_must_exist(self):
-        with self.assertRaises(sqlite3.IntegrityError):
+        with self.assertRaises(IntegrityError):
             create_assignment(
                 course_id=999999,
                 title="Invalid Assignment",
@@ -882,7 +899,7 @@ class TestResourceServices(unittest.TestCase):
         self.assertFalse(deleted)
 
     def test_resource_course_must_exist(self):
-        with self.assertRaises(sqlite3.IntegrityError):
+        with self.assertRaises(IntegrityError):
             create_resource(
                 title="Invalid Resource",
                 resource_type="Book",
@@ -1043,7 +1060,7 @@ class TestStudySessionServices(unittest.TestCase):
         self.assertFalse(deleted)
 
     def test_study_session_course_must_exist(self):
-        with self.assertRaises(sqlite3.IntegrityError):
+        with self.assertRaises(IntegrityError):
             create_study_session(
                 course_id=999999,
                 study_date="2026-11-04",
@@ -1053,7 +1070,7 @@ class TestStudySessionServices(unittest.TestCase):
     def test_duration_must_be_positive(self):
         course_id = self.create_test_course()
 
-        with self.assertRaises(sqlite3.IntegrityError):
+        with self.assertRaises(IntegrityError):
             create_study_session(
                 course_id=course_id,
                 study_date="2026-11-04",
@@ -1063,7 +1080,7 @@ class TestStudySessionServices(unittest.TestCase):
     def test_negative_duration_is_rejected(self):
         course_id = self.create_test_course()
 
-        with self.assertRaises(sqlite3.IntegrityError):
+        with self.assertRaises(IntegrityError):
             create_study_session(
                 course_id=course_id,
                 study_date="2026-11-04",
@@ -1271,7 +1288,7 @@ class TestCalendarEventServices(unittest.TestCase):
         self.assertFalse(deleted)
 
     def test_calendar_event_course_must_exist(self):
-        with self.assertRaises(sqlite3.IntegrityError):
+        with self.assertRaises(IntegrityError):
             create_calendar_event(
                 title="Invalid Event",
                 event_type="Exam",
@@ -1409,13 +1426,13 @@ class TestTagServices(unittest.TestCase):
     def test_duplicate_tag_is_rejected(self):
         create_tag("Python")
 
-        with self.assertRaises(sqlite3.IntegrityError):
+        with self.assertRaises(IntegrityError):
             create_tag("Python")
 
     def test_duplicate_tag_with_whitespace_is_rejected(self):
         create_tag("Python")
 
-        with self.assertRaises(sqlite3.IntegrityError):
+        with self.assertRaises(IntegrityError):
             create_tag("  Python  ")
 
         tags = get_all_tags()
@@ -1534,10 +1551,10 @@ class TestResourceTagServices(unittest.TestCase):
         try:
             row = connection.execute(
                 """
-                SELECT COUNT(*)
+                SELECT COUNT(*) AS count
                 FROM resource_tags
-                WHERE resource_id = ?
-                AND tag_id = ?
+                WHERE resource_id = %s
+                AND tag_id = %s
                 """,
                 (resource_id, tag_id),
             ).fetchone()
@@ -1545,7 +1562,7 @@ class TestResourceTagServices(unittest.TestCase):
         finally:
             connection.close()
 
-        self.assertEqual(row[0], 1)
+        self.assertEqual(row["count"], 1)
 
     def test_same_tag_can_be_assigned_to_different_resources(self):
         tag_id = create_tag("Python")
@@ -1562,7 +1579,7 @@ class TestResourceTagServices(unittest.TestCase):
     def test_resource_must_exist_for_tag(self):
         tag_id = create_tag("Test")
 
-        with self.assertRaises(sqlite3.IntegrityError):
+        with self.assertRaises(IntegrityError):
             add_tag_to_resource(
                 999999,
                 tag_id,
@@ -1574,7 +1591,7 @@ class TestResourceTagServices(unittest.TestCase):
             "Book",
         )
 
-        with self.assertRaises(sqlite3.IntegrityError):
+        with self.assertRaises(IntegrityError):
             add_tag_to_resource(
                 resource_id,
                 999999,
@@ -1599,12 +1616,12 @@ class TestResourceTagServices(unittest.TestCase):
         try:
             count = connection.execute(
                 """
-                SELECT COUNT(*)
+                SELECT COUNT(*) AS count
                 FROM resource_tags
-                WHERE resource_id = ?
+                WHERE resource_id = %s
                 """,
                 (resource_id,),
-            ).fetchone()[0]
+            ).fetchone()["count"]
 
         finally:
             connection.close()
@@ -1630,12 +1647,12 @@ class TestResourceTagServices(unittest.TestCase):
         try:
             count = connection.execute(
                 """
-                SELECT COUNT(*)
+                SELECT COUNT(*) AS count
                 FROM resource_tags
-                WHERE tag_id = ?
+                WHERE tag_id = %s
                 """,
                 (tag_id,),
-            ).fetchone()[0]
+            ).fetchone()["count"]
 
         finally:
             connection.close()

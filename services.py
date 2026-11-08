@@ -37,7 +37,7 @@ def _update_row(connection, table, record_id, values):
     for column, value in values.items():
         if value is _UNSET:
             continue
-        columns.append(f"{column} = ?")
+        columns.append(f"{column} = %s")
         parameters.append(value)
 
     if not columns:
@@ -46,7 +46,7 @@ def _update_row(connection, table, record_id, values):
     parameters.append(record_id)
 
     cursor = connection.execute(
-        f"UPDATE {table} SET {', '.join(columns)} WHERE id = ?",
+        f"UPDATE {table} SET {', '.join(columns)} WHERE id = %s",
         parameters,
     )
 
@@ -94,7 +94,8 @@ def create_course(
                 semester,
                 color
             )
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id
             """,
             (
                 name,
@@ -105,9 +106,11 @@ def create_course(
             )
         )
 
+        new_id = cursor.fetchone()["id"]
+
         connection.commit()
 
-        return cursor.lastrowid
+        return new_id
 
     finally:
         connection.close()
@@ -128,7 +131,7 @@ def get_all_courses(active_only=False):
 
         if active_only:
             query += """
-                WHERE is_active = 1
+                WHERE is_active = TRUE
             """
 
         query += """
@@ -168,7 +171,7 @@ def get_course_by_id(course_id):
             """
             SELECT *
             FROM courses
-            WHERE id = ?
+            WHERE id = %s
             """,
             (course_id,)
         )
@@ -239,7 +242,7 @@ def update_course(
             "semester": semester,
             "color": color,
             "is_active": (
-                _UNSET if is_active is _UNSET else int(is_active)
+                _UNSET if is_active is _UNSET else bool(is_active)
             ),
         }
 
@@ -275,7 +278,7 @@ def delete_course(course_id):
         cursor.execute(
             """
             DELETE FROM courses
-            WHERE id = ?
+            WHERE id = %s
             """,
             (course_id,)
         )
@@ -329,7 +332,8 @@ def create_assignment(
                 priority,
                 progress
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
             """,
             (
                 course_id,
@@ -342,8 +346,10 @@ def create_assignment(
             ),
         )
 
+        new_id = cursor.fetchone()["id"]
+
         connection.commit()
-        return cursor.lastrowid
+        return new_id
 
     finally:
         connection.close()
@@ -394,7 +400,7 @@ def get_assignments_by_course(course_id):
             """
             SELECT *
             FROM assignments
-            WHERE course_id = ?
+            WHERE course_id = %s
             ORDER BY deadline IS NULL, deadline ASC
             """,
             (course_id,),
@@ -432,7 +438,7 @@ def get_assignment_by_id(assignment_id):
             """
             SELECT *
             FROM assignments
-            WHERE id = ?
+            WHERE id = %s
             """,
             (assignment_id,),
         )
@@ -520,7 +526,7 @@ def delete_assignment(assignment_id):
         cursor.execute(
             """
             DELETE FROM assignments
-            WHERE id = ?
+            WHERE id = %s
             """,
             (assignment_id,),
         )
@@ -575,7 +581,8 @@ def create_resource(
                 status,
                 notes
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
             """,
             (
                 course_id,
@@ -589,8 +596,10 @@ def create_resource(
             ),
         )
 
+        new_id = cursor.fetchone()["id"]
+
         connection.commit()
-        return cursor.lastrowid
+        return new_id
 
     finally:
         connection.close()
@@ -644,7 +653,7 @@ def get_resources_by_course(course_id):
             """
             SELECT *
             FROM resources
-            WHERE course_id = ?
+            WHERE course_id = %s
             ORDER BY title
             """,
             (course_id,),
@@ -684,7 +693,7 @@ def get_resource_by_id(resource_id):
             """
             SELECT *
             FROM resources
-            WHERE id = ?
+            WHERE id = %s
             """,
             (resource_id,),
         )
@@ -776,7 +785,7 @@ def delete_resource(resource_id):
         cursor.execute(
             """
             DELETE FROM resources
-            WHERE id = ?
+            WHERE id = %s
             """,
             (resource_id,),
         )
@@ -815,7 +824,8 @@ def create_study_session(
                 duration_minutes,
                 notes
             )
-            VALUES (?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
             """,
             (
                 course_id,
@@ -825,8 +835,10 @@ def create_study_session(
             ),
         )
 
+        new_id = cursor.fetchone()["id"]
+
         connection.commit()
-        return cursor.lastrowid
+        return new_id
 
     finally:
         connection.close()
@@ -877,7 +889,7 @@ def get_study_sessions_by_course(course_id):
             """
             SELECT *
             FROM study_sessions
-            WHERE course_id = ?
+            WHERE course_id = %s
             ORDER BY study_date DESC, id DESC
             """,
             (course_id,),
@@ -912,7 +924,7 @@ def get_study_session_by_id(session_id):
             """
             SELECT *
             FROM study_sessions
-            WHERE id = ?
+            WHERE id = %s
             """,
             (session_id,),
         )
@@ -955,11 +967,11 @@ def update_study_session(
             """
             UPDATE study_sessions
             SET
-                course_id = ?,
-                study_date = ?,
-                duration_minutes = ?,
-                notes = ?
-            WHERE id = ?
+                course_id = %s,
+                study_date = %s,
+                duration_minutes = %s,
+                notes = %s
+            WHERE id = %s
             """,
             (
                 course_id,
@@ -988,7 +1000,7 @@ def delete_study_session(session_id):
         cursor.execute(
             """
             DELETE FROM study_sessions
-            WHERE id = ?
+            WHERE id = %s
             """,
             (session_id,),
         )
@@ -1050,7 +1062,8 @@ def create_calendar_event(
                 end_datetime,
                 description
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id
             """,
             (
                 course_id,
@@ -1062,8 +1075,10 @@ def create_calendar_event(
             ),
         )
 
+        new_id = cursor.fetchone()["id"]
+
         connection.commit()
-        return cursor.lastrowid
+        return new_id
 
     finally:
         connection.close()
@@ -1116,7 +1131,7 @@ def get_calendar_events_by_course(course_id):
             """
             SELECT *
             FROM calendar_events
-            WHERE course_id = ?
+            WHERE course_id = %s
             ORDER BY start_datetime ASC
             """,
             (course_id,),
@@ -1153,7 +1168,7 @@ def get_calendar_event_by_id(event_id):
             """
             SELECT *
             FROM calendar_events
-            WHERE id = ?
+            WHERE id = %s
             """,
             (event_id,),
         )
@@ -1218,7 +1233,7 @@ def update_calendar_event(
                 """
                 SELECT start_datetime, end_datetime
                 FROM calendar_events
-                WHERE id = ?
+                WHERE id = %s
                 """,
                 (event_id,),
             ).fetchone()
@@ -1271,7 +1286,7 @@ def delete_calendar_event(event_id):
         cursor.execute(
             """
             DELETE FROM calendar_events
-            WHERE id = ?
+            WHERE id = %s
             """,
             (event_id,),
         )
@@ -1297,13 +1312,16 @@ def create_tag(name):
         cursor.execute(
             """
             INSERT INTO tags (name)
-            VALUES (?)
+            VALUES (%s)
+            RETURNING id
             """,
             (name,),
         )
 
+        new_id = cursor.fetchone()["id"]
+
         connection.commit()
-        return cursor.lastrowid
+        return new_id
 
     finally:
         connection.close()
@@ -1351,7 +1369,7 @@ def get_tag_by_id(tag_id):
             """
             SELECT *
             FROM tags
-            WHERE id = ?
+            WHERE id = %s
             """,
             (tag_id,),
         )
@@ -1382,8 +1400,8 @@ def update_tag(tag_id, name):
         cursor.execute(
             """
             UPDATE tags
-            SET name = ?
-            WHERE id = ?
+            SET name = %s
+            WHERE id = %s
             """,
             (name, tag_id),
         )
@@ -1406,7 +1424,7 @@ def delete_tag(tag_id):
         cursor.execute(
             """
             DELETE FROM tags
-            WHERE id = ?
+            WHERE id = %s
             """,
             (tag_id,),
         )
@@ -1436,7 +1454,7 @@ def add_tag_to_resource(resource_id, tag_id):
                 resource_id,
                 tag_id
             )
-            VALUES (?, ?)
+            VALUES (%s, %s)
             ON CONFLICT (resource_id, tag_id) DO NOTHING
             """,
             (resource_id, tag_id),
@@ -1461,8 +1479,8 @@ def remove_tag_from_resource(resource_id, tag_id):
         cursor.execute(
             """
             DELETE FROM resource_tags
-            WHERE resource_id = ?
-            AND tag_id = ?
+            WHERE resource_id = %s
+            AND tag_id = %s
             """,
             (resource_id, tag_id),
         )
@@ -1489,7 +1507,7 @@ def get_tags_for_resource(resource_id):
             FROM tags
             INNER JOIN resource_tags
                 ON tags.id = resource_tags.tag_id
-            WHERE resource_tags.resource_id = ?
+            WHERE resource_tags.resource_id = %s
             ORDER BY tags.name
             """,
             (resource_id,),
