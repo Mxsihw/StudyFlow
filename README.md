@@ -1,6 +1,6 @@
 # StudyFlow
 
-StudyFlow is a Python study-management backend built on SQLite. It provides a
+StudyFlow is a Python study-management backend built on PostgreSQL. It provides a
 validated service layer for organizing courses, assignments, learning resources,
 study sessions, calendar events, and tags. The current project exposes its
 functionality through Python modules; there is no graphical interface yet.
@@ -32,15 +32,15 @@ functionality through Python modules; there is no graphical interface yet.
 ```text
 StudyFlow/
 ├── constants.py              # Default values and status/priority options
-├── database.py               # Database path, connections, and schema setup
+├── database.py               # PostgreSQL DSN, connections, and schema setup
 ├── models.py                 # Dataclasses for stored records
 ├── services.py               # Service-layer database operations
 ├── validators.py             # Input and date/datetime validation
 ├── requirements.txt          # Third-party dependencies
 ├── README.md
-├── studyflow.db              # Local SQLite database (ignored by git)
 └── Tests/
     ├── __init__.py
+    ├── db_test_utils.py      # Isolated PostgreSQL schemas for tests
     ├── test_fresh_database.py
     ├── test_services.py
     └── test_validators.py
@@ -48,21 +48,28 @@ StudyFlow/
 
 ## Requirements
 
-- Python 3.9 or newer
-- `jdatetime` (installed from `requirements.txt`)
-- SQLite support, which is included with the Python standard library
+- Python 3.10 or newer
+- A running PostgreSQL server with a database for StudyFlow
+- `jdatetime` and `psycopg[binary]` (installed from `requirements.txt`)
 
 ## Setup
 
 1. Obtain the project and open a terminal in the project root directory.
 
-2. Create a virtual environment:
+2. Create the PostgreSQL database used by StudyFlow. The default configuration
+   expects a database named `studyflow`:
+
+   ```bash
+   createdb -U postgres studyflow
+   ```
+
+3. Create a virtual environment:
 
    ```bash
    python -m venv .venv
    ```
 
-3. Activate the virtual environment.
+4. Activate the virtual environment.
 
    Windows (PowerShell):
 
@@ -82,7 +89,7 @@ StudyFlow/
    source .venv/bin/activate
    ```
 
-4. Install the dependencies:
+5. Install the dependencies:
 
    ```bash
    python -m pip install -r requirements.txt
@@ -90,16 +97,21 @@ StudyFlow/
 
 ## Initialize and run
 
-The current entry point initializes the SQLite database and creates any missing
+The entry point initializes the PostgreSQL schema and creates any missing
 tables:
 
 ```bash
 python database.py
 ```
 
-By default, the database file is `studyflow.db` in the project root. To use a
-different location, set the `STUDYFLOW_DB_PATH` environment variable before
-running Python.
+By default, StudyFlow connects to
+`postgresql://postgres:postgres@localhost:5432/studyflow`. To use a different
+server, database, or credentials, set the `STUDYFLOW_DB_URL` environment
+variable to a PostgreSQL DSN before running Python:
+
+```powershell
+$env:STUDYFLOW_DB_URL = "postgresql://user:password@host:5432/studyflow"
+```
 
 The service layer can then be used directly from Python:
 
@@ -120,5 +132,12 @@ From the project root, run the complete test suite with:
 python -m unittest discover -v
 ```
 
-The tests create and initialize their own temporary databases, so they do not
-depend on or modify the local `studyflow.db` file.
+The tests create and initialize isolated PostgreSQL schemas, so they do not
+modify existing StudyFlow tables. They require a reachable PostgreSQL database.
+The test DSN is read from `STUDYFLOW_TEST_DB_URL`, then `STUDYFLOW_DB_URL`, and
+finally the default DSN above:
+
+```powershell
+$env:STUDYFLOW_TEST_DB_URL = "postgresql://postgres:postgres@localhost:5432/studyflow_test"
+python -m unittest discover -v
+```
