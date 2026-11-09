@@ -2,9 +2,14 @@ from fastapi import APIRouter, HTTPException, Response, status
 
 import services
 from api.schemas.courses import CourseCreate, CourseResponse, CourseUpdate
+from api.schemas.errors import ERROR_RESPONSES
 
 
-router = APIRouter(prefix="/courses", tags=["courses"])
+router = APIRouter(
+    prefix="/courses",
+    tags=["courses"],
+    responses=ERROR_RESPONSES,
+)
 
 
 def _get_course_or_404(course_id):

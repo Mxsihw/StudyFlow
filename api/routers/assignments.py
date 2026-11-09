@@ -6,9 +6,14 @@ from api.schemas.assignments import (
     AssignmentResponse,
     AssignmentUpdate,
 )
+from api.schemas.errors import ERROR_RESPONSES
 
 
-router = APIRouter(prefix="/assignments", tags=["assignments"])
+router = APIRouter(
+    prefix="/assignments",
+    tags=["assignments"],
+    responses=ERROR_RESPONSES,
+)
 
 
 def _get_assignment_or_404(assignment_id):
