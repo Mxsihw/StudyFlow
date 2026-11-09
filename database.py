@@ -1,11 +1,15 @@
 import os
+from pathlib import Path
 
 import psycopg
+from dotenv import load_dotenv
 from psycopg.rows import dict_row
 
 
+load_dotenv(Path(__file__).with_name(".env"))
+
 DEFAULT_DATABASE_URL = (
-    "postgresql://postgres:postgres@localhost:5432/studyflow"
+    "postgresql://postgres@localhost:5432/studyflow"
 )
 DATABASE_URL = os.environ.get(
     "STUDYFLOW_DB_URL",

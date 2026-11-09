@@ -37,6 +37,7 @@ StudyFlow/
 ├── services.py               # Service-layer database operations
 ├── validators.py             # Input and date/datetime validation
 ├── requirements.txt          # Third-party dependencies
+├── .env.example              # Local PostgreSQL configuration template
 ├── README.md
 └── Tests/
     ├── __init__.py
@@ -50,7 +51,8 @@ StudyFlow/
 
 - Python 3.10 or newer
 - A running PostgreSQL server with a database for StudyFlow
-- `jdatetime` and `psycopg[binary]` (installed from `requirements.txt`)
+- `jdatetime`, `psycopg[binary]`, and `python-dotenv` (installed from
+  `requirements.txt`)
 
 ## Setup
 
@@ -95,6 +97,15 @@ StudyFlow/
    python -m pip install -r requirements.txt
    ```
 
+6. Create your local environment file from the template and replace
+   `YOUR_PASSWORD` with your PostgreSQL password:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   The `.env` file is ignored by Git and must not be committed.
+
 ## Initialize and run
 
 The entry point initializes the PostgreSQL schema and creates any missing
@@ -104,10 +115,10 @@ tables:
 python database.py
 ```
 
-By default, StudyFlow connects to
-`postgresql://postgres:postgres@localhost:5432/studyflow`. To use a different
-server, database, or credentials, set the `STUDYFLOW_DB_URL` environment
-variable to a PostgreSQL DSN before running Python:
+StudyFlow loads `STUDYFLOW_DB_URL` from the local `.env` file. Without that
+setting, it falls back to `postgresql://postgres@localhost:5432/studyflow`.
+To use a different server or database, update `.env` or set the
+`STUDYFLOW_DB_URL` environment variable before running Python:
 
 ```powershell
 $env:STUDYFLOW_DB_URL = "postgresql://user:password@host:5432/studyflow"
@@ -138,6 +149,6 @@ The test DSN is read from `STUDYFLOW_TEST_DB_URL`, then `STUDYFLOW_DB_URL`, and
 finally the default DSN above:
 
 ```powershell
-$env:STUDYFLOW_TEST_DB_URL = "postgresql://postgres:postgres@localhost:5432/studyflow_test"
+$env:STUDYFLOW_TEST_DB_URL = "postgresql://postgres:YOUR_PASSWORD@localhost:5432/studyflow_test"
 python -m unittest discover -v
 ```
