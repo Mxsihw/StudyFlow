@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
 from api.errors import register_exception_handlers
-from api.routers import courses
+from api.routers import assignments, courses
 
 
 app = FastAPI(
@@ -11,6 +11,7 @@ app = FastAPI(
 
 register_exception_handlers(app)
 app.include_router(courses.router)
+app.include_router(assignments.router)
 
 
 @app.get("/health")
